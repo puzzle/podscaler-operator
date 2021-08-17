@@ -1,0 +1,11 @@
+---
+# example object
+apiVersion: puzzle.ch/v1
+kind: PodScaler
+metadata:
+  name: pitc-namespace-test
+spec:
+  namespace: pitc-namespace-test
+  status: down
+  filter: ""
+  no_daemonset: false

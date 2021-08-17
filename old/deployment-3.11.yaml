@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: pod-scaler
+  namespace: "${NAMESPACE}"
+objects:
+  # create customresource for the operator
+  - apiVersion: apiextensions.k8s.io/v1beta1
+    kind: CustomResourceDefinition
+    metadata:
+      name: podscalers.puzzle.ch
+    spec:
+      scope: Cluster
+      group: puzzle.ch
+      versions:
+        - name: v1
+          served: true
+          storage: true
+      names:
+        kind: PodScaler
+        plural: podscalers
+        singular: podscaler
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                namespace:
+                  type: string
+                status:
+                  type: string
+                filter:
+                  type: string
+                no_daemonset:
+                  type: boolean
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      namespace: "${NAMESPACE}"
+      name: podscaler-account
+
+  - apiVersion: authorization.openshift.io/v1
+    kind: ClusterRole
+    metadata:
+      name: podscaler-role-cluster
+    rules:
+      # Framework: knowing which other operators are running (i.e. peering).
+      - apiGroups: [zalando.org]
+        resources: [clusterkopfpeerings]
+        verbs: [list, watch, patch, get]
+
+      - apiGroups: [apiextensions.k8s.io]
+        resources: [customresourcedefinitions]
+        verbs: [list, get]
+
+      # Application: read-only access for watching cluster-wide.
+      - apiGroups: [puzzle.ch]
+        resources: [podscalers]
+        verbs: [list, watch, patch, get]
+
+  - apiVersion: authorization.openshift.io/v1
+    kind: Role
+    metadata:
+      namespace: "${NAMESPACE}"
+      name: podscaler-role-namespaced
+    rules:
+      # Framework: knowing which other operators are running (i.e. peering).
+      - apiGroups: [zalando.org]
+        resources: [kopfpeerings]
+        verbs: [list, watch, patch, get]
+
+      # Framework: posting the events about the handlers progress/errors.
+      - apiGroups: [events.k8s.io]
+        resources: [events]
+        verbs: [create]
+
+      - apiGroups: [""]
+        resources: [events]
+        verbs: [create]
+
+      # podscaler-crd access
+      - apiGroups: [puzzle.ch]
+        resources: [podscalers]
+        verbs: [list, watch, patch, get]
+
+  - apiVersion: authorization.openshift.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: podscaler-rolebinding-cluster
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: podscaler-role-cluster
+    subjects:
+      - kind: ServiceAccount
+        name: podscaler-account
+        namespace: "${NAMESPACE}"
+
+  - apiVersion: authorization.openshift.io/v1
+    kind: RoleBinding
+    metadata:
+      namespace: "${NAMESPACE}"
+      name: podscaler-rolebinding-namespaced
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: podscaler-role-namespaced
+    subjects:
+      - kind: ServiceAccount
+        name: podscaler-account
+
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: podscaler-operator
+      namespace: "${NAMESPACE}"
+    spec:
+      replicas: 1
+      strategy:
+        type: Recreate
+      selector:
+        matchLabels:
+          application: podscaler-operator
+      template:
+        metadata:
+          labels:
+            application: podscaler-operator
+        spec:
+          serviceAccountName: podscaler-account
+          containers:
+          - name: podscaler-operator
+            image: registry.puzzle.ch/puzzle/pod-scaler:latest
+parameters:
+  - description: namespace for this deployment
+    name: NAMESPACE
+    value: podscaler-operator
