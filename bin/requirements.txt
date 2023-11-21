@@ -1,7 +1,7 @@
 aiohttp==3.8.6
 aiojobs==0.3.0
 astroid==2.7.1
-async-timeout==3.0.1
+async-timeout==4.0.3
 attrs==21.2.0
 cachetools==4.2.2
 certifi==2023.7.22
